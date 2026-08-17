@@ -197,3 +197,25 @@ export const loginUser = async (req, res, next) => {
     refreshToken: refreshToken,
   });
 };
+
+export const logoutUser = async (req,res,next)=>{
+   const  userId = req.userId;
+
+   if( ! await Session.findOne({userId:userId})){
+    return res.status(400).json({
+      success:false,
+      message:"User Is Logged Out Already , Can`t Loggout Again !",
+    })
+   };
+
+   await Session.deleteMany({userId:userId});
+   const user = await User.findById(userId);
+   await User.findByIdAndUpdate(userId,{isLoggedIn:false});
+
+   return res.status(200).json({
+    success:true,
+    message:`${user.firstName} Loggout Successfully !`
+   });
+
+   
+}

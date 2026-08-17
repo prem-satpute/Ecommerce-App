@@ -1,6 +1,7 @@
 import * as userController from "../controllers/user.controller.js";
 import express from "express";
 import { body } from "express-validator";
+import { isAuthenticated } from "../utils/Middleware/isAuthenticated.js";
 
 const router = express.Router();
 
@@ -34,5 +35,7 @@ router.post("/login",
     body('password').isLength({min:3 , max:15}).withMessage("Password must at least 3 character long !")
   ],  
   userController.loginUser);
+
+router.get("/logout",isAuthenticated,userController.logoutUser);
 
 export default router;
