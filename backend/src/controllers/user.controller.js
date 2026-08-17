@@ -7,6 +7,7 @@ import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import config from "../config/config.js";
 import Session from "../models/sesssion.model.js";
+import { sendOtp } from "../utils/send-otp-folder/sendOtp.js";
 
 export const registerUser = async (req, res, next) => {
   const errors = validationResult(req);
@@ -111,16 +112,14 @@ export const verifyEmail = async (req, res, next) => {
 };
 
 export const loginUser = async (req, res, next) => {
-    const errors = validationResult(req);
+  const errors = validationResult(req);
 
-    if(!errors.isEmpty()){
-        return res.status(400).json({
-            success:false,
-            Errors:errors.array()
-        })
-    }
-
-
+  if (!errors.isEmpty()) {
+    return res.status(400).json({
+      success: false,
+      Errors: errors.array(),
+    });
+  }
 
   const { email, password } = req.body;
 
@@ -198,24 +197,90 @@ export const loginUser = async (req, res, next) => {
   });
 };
 
-export const logoutUser = async (req,res,next)=>{
-   const  userId = req.userId;
+export const logoutUser = async (req, res, next) => {
+  const userId = req.userId;
 
-   if( ! await Session.findOne({userId:userId})){
+  if (!(await Session.findOne({ userId: userId }))) {
     return res.status(400).json({
-      success:false,
-      message:"User Is Logged Out Already , Can`t Loggout Again !",
-    })
-   };
+      success: false,
+      message: "User Is Logged Out Already , Can`t Loggout Again !",
+    });
+  }
 
-   await Session.deleteMany({userId:userId});
-   const user = await User.findById(userId);
-   await User.findByIdAndUpdate(userId,{isLoggedIn:false});
+  await Session.deleteMany({ userId: userId });
+  const user = await User.findById(userId);
+  await User.findByIdAndUpdate(userId, { isLoggedIn: false });
 
-   return res.status(200).json({
-    success:true,
-    message:`${user.firstName} Loggout Successfully !`
-   });
+  return res.status(200).json({
+    success: true,
+    message: `${user.firstName} Loggout Successfully !`,
+  });
+};
 
+export const forgotPassord = async (req, res, next) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({
+      success: false,
+      message: "Email must be required to reset password !",
+    });
+  }
+
+  const user = await User.findOne({ email });
+
+  if (!user) {
+    return res.status(404).json({
+      success: false,
+      message: "User Not Found !",
+    });
+  }
+
+  // rate to handle multiple requests !
+  const forgotPasswordRateLimitKey = `fogot-password-rate-limit:${req.ip}:${email}`;
+
+  if (await redisClient.get(forgotPasswordRateLimitKey)) {
+    return res.status(429).json({
+      success: false,
+      message: "Too many requests , Please try after some seconds",
+    });
+  }
+
+  // checking in redis cache data is valid or not
+  const forgotPasswordOtpKey = `forgot-password-otp-key:${email}`;
+
+ 
+  if (
+    user.otp &&
+    user.otpExpiry &&
+    user.otpExpiry > new Date() &&
+    (await redisClient.get(forgotPasswordOtpKey))
+  ) {
    
-}
+    return res.status(400).json({
+      success: false,
+      message:
+        "Can`t generate New OTP , beacuse current OTP not expired till !",
+    });
+  }
+
+  const otp = Math.floor(10000 + Math.random() * 9000).toString();
+  const otpExpiry = new Date(Date.now() + 5 * 60 * 1000);
+
+  // store the data in mongoose databse :
+  user.otp = otp;
+  user.otpExpiry = otpExpiry;
+  await user.save();
+
+  // set the data in redis cache
+  await redisClient.set(forgotPasswordOtpKey, JSON.stringify(otp), { EX: 300 });
+  await redisClient.set(forgotPasswordRateLimitKey, "true", { EX: 30 });
+
+  sendOtp(email, otp);
+
+  return res.status(200).json({
+    success: true,
+    message: `Successfully send the otp at email = ${email}`,
+    otp: otp,
+  });
+};
