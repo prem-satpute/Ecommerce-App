@@ -284,3 +284,75 @@ export const forgotPassord = async (req, res, next) => {
     otp: otp,
   });
 };
+
+export const verifyForgotPasswordOtp = async (req,res,next)=>{
+  const {otp} = req.body;
+  const {email} = req.params
+
+  if(!otp){
+    return res.status(400).json({
+      success:false,
+      message:"OTP must be required !"
+    });
+  };
+
+  if(!email){
+    return res.status(400).json({
+      success:false,
+      message:"Must be required !"
+    });
+  };
+
+  const user = await User.findOne({email});
+
+  if(!user){
+     return res.status(404).json({
+      success:false,
+      message:"User Not Found !"
+     });
+  };
+
+  
+
+  const forgotPasswordOtpKey = `forgot-password-otp-key:${email}`;
+  const StringOtp  = await redisClient.get(forgotPasswordOtpKey);
+
+  if(!StringOtp){
+    return res.status(400).json({
+      success:false,
+      message:"OTP is expired , generate new OTP Please !"
+    })
+  };
+
+
+  const actualOtp = JSON.parse(StringOtp);
+
+  if(user.otp !== otp && actualOtp !== otp){
+    if(user.otpExpiry< new Date()){
+      return res.status(400).json({
+        success:false,
+        message:"OTP is Expired , please generate new OTP to re-verify again !",
+      })
+    }
+
+    return res.status(400).json({
+      success:false,
+      message:"OTP is not Matched "
+    })
+    
+  };
+
+  user.otp = null;
+  user.otpExpiry = null;
+  await user.save();
+
+  await redisClient.del(forgotPasswordOtpKey);
+
+
+  return res.status(200).json({
+    success:true,
+    message:"Forgot-password OTP is successfully Veririfed, OTP Match !"
+  })
+
+};
+
