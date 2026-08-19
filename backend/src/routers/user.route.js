@@ -37,6 +37,7 @@ router.post("/login",
   userController.loginUser);
 
 router.get("/logout",isAuthenticated,userController.logoutUser);
-router.post("/forgot-password",userController.forgotPassord)
+router.post("/forgot-password",userController.forgotPassord);
+router.post("/verify-forgot-password/:email",userController.verifyForgotPasswordOtp)
 
 export default router;
