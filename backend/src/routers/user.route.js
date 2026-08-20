@@ -45,6 +45,6 @@ router.post("/change-password/:email",
     body('confirmPassword').isStrongPassword().isLength({min:4}).withMessage("password must be 4 charecter long")
   ]
   ,userController.changePassword);
-
+router.post("/resend-otp/:email",userController.resedOtp);
 
 export default router;
