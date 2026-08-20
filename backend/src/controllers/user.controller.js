@@ -249,14 +249,12 @@ export const forgotPassord = async (req, res, next) => {
   // checking in redis cache data is valid or not
   const forgotPasswordOtpKey = `forgot-password-otp-key:${email}`;
 
- 
   if (
     user.otp &&
     user.otpExpiry &&
     user.otpExpiry > new Date() &&
     (await redisClient.get(forgotPasswordOtpKey))
   ) {
-   
     return res.status(400).json({
       success: false,
       message:
@@ -285,62 +283,59 @@ export const forgotPassord = async (req, res, next) => {
   });
 };
 
-export const verifyForgotPasswordOtp = async (req,res,next)=>{
-  const {otp} = req.body;
-  const {email} = req.params
+export const verifyForgotPasswordOtp = async (req, res, next) => {
+  const { otp } = req.body;
+  const { email } = req.params;
 
-  if(!otp){
+  if (!otp) {
     return res.status(400).json({
-      success:false,
-      message:"OTP must be required !"
+      success: false,
+      message: "OTP must be required !",
     });
-  };
+  }
 
-  if(!email){
+  if (!email) {
     return res.status(400).json({
-      success:false,
-      message:"Must be required !"
+      success: false,
+      message: "Must be required !",
     });
-  };
+  }
 
-  const user = await User.findOne({email});
+  const user = await User.findOne({ email });
 
-  if(!user){
-     return res.status(404).json({
-      success:false,
-      message:"User Not Found !"
-     });
-  };
-
-  
+  if (!user) {
+    return res.status(404).json({
+      success: false,
+      message: "User Not Found !",
+    });
+  }
 
   const forgotPasswordOtpKey = `forgot-password-otp-key:${email}`;
-  const StringOtp  = await redisClient.get(forgotPasswordOtpKey);
+  const StringOtp = await redisClient.get(forgotPasswordOtpKey);
 
-  if(!StringOtp){
+  if (!StringOtp) {
     return res.status(400).json({
-      success:false,
-      message:"OTP is expired , generate new OTP Please !"
-    })
-  };
-
+      success: false,
+      message: "OTP is expired , generate new OTP Please !",
+    });
+  }
 
   const actualOtp = JSON.parse(StringOtp);
 
-  if(user.otp !== otp && actualOtp !== otp){
-    if(user.otpExpiry< new Date()){
+  if (user.otp !== otp && actualOtp !== otp) {
+    if (user.otpExpiry < new Date()) {
       return res.status(400).json({
-        success:false,
-        message:"OTP is Expired , please generate new OTP to re-verify again !",
-      })
+        success: false,
+        message:
+          "OTP is Expired , please generate new OTP to re-verify again !",
+      });
     }
 
     return res.status(400).json({
-      success:false,
-      message:"OTP is not Matched "
-    })
-    
-  };
+      success: false,
+      message: "OTP is not Matched ",
+    });
+  }
 
   user.otp = null;
   user.otpExpiry = null;
@@ -348,11 +343,83 @@ export const verifyForgotPasswordOtp = async (req,res,next)=>{
 
   await redisClient.del(forgotPasswordOtpKey);
 
-
   return res.status(200).json({
-    success:true,
-    message:"Forgot-password OTP is successfully Veririfed, OTP Match !"
-  })
-
+    success: true,
+    message: "Forgot-password OTP is successfully Veririfed, OTP Match !",
+  });
 };
 
+export const changePassword = async (req, res, next) => {
+
+  const errors = validationResult(req);
+
+  if(!errors.isEmpty()){
+    return res.status(400).json({
+      success:false,
+      message:errors.array()
+    })
+  }
+  const { newPassword, confirmPassword } = req.body;
+  const { email } = req.params;
+  if (!newPassword || !confirmPassword) {
+    return res.status(400).json({
+      success: false,
+      message: "All filed must be required !",
+    });
+  }
+
+  if (!email) {
+    return res.status(400).json({
+      success: false,
+      message: "Email must be required !",
+    });
+  }
+
+  const user = await User.findOne({ email });
+
+  if (!user) {
+    return res.status(404).json({
+      success: false,
+      message: "User Not Found !",
+    });
+  }
+
+  if(user.isLoggedIn == false){
+    return res.status(401).json({
+      success:false,
+      message:"Unauthorized ,User  may login first to change password"
+    })
+  };
+
+  const changePasswordRateLimit = `change-password-rate-limit-key:${req.ip}:${email}`;
+
+  if(await redisClient.get(changePasswordRateLimit)){
+    return res.status(429).json({
+      success:false,
+      message:"Too many requests , Please try after some seconds !",
+    });
+
+  };
+
+
+  if(newPassword !== confirmPassword){
+    return res.status(403).json({
+      success:false,
+      message:"Both Password Not Matched !",
+    });
+  };
+
+
+  const newHashedPassword = await bcrypt.hash(newPassword, 10);
+
+  user.password = newHashedPassword;
+  await user.save();
+
+  await redisClient.set(changePasswordRateLimit,"true",{EX:30});
+
+   return res.status(200).json({
+    success:true,
+    message:`password is changed for ${user.firstName} this user`,
+   });
+
+};
