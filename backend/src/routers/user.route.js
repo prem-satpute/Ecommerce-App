@@ -38,6 +38,13 @@ router.post("/login",
 
 router.get("/logout",isAuthenticated,userController.logoutUser);
 router.post("/forgot-password",userController.forgotPassord);
-router.post("/verify-forgot-password/:email",userController.verifyForgotPasswordOtp)
+router.post("/verify-forgot-password/:email",userController.verifyForgotPasswordOtp);
+router.post("/change-password/:email",
+  [
+    body('newPassword').isStrongPassword().isLength({min:4}).withMessage("password must be 4 charecter long"),
+    body('confirmPassword').isStrongPassword().isLength({min:4}).withMessage("password must be 4 charecter long")
+  ]
+  ,userController.changePassword);
+
 
 export default router;
