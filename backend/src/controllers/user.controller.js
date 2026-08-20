@@ -248,19 +248,31 @@ export const forgotPassord = async (req, res, next) => {
 
   // checking in redis cache data is valid or not
   const forgotPasswordOtpKey = `forgot-password-otp-key:${email}`;
+  const resendOtpKey = `resed-otp-key:${email}`;
 
   if (
     user.otp &&
     user.otpExpiry &&
-    user.otpExpiry > new Date() &&
-    (await redisClient.get(forgotPasswordOtpKey))
+    user.otpExpiry > new Date()
   ) {
     return res.status(400).json({
       success: false,
       message:
         "Can`t generate New OTP , beacuse current OTP not expired till !",
     });
+  };
+
+  const forgotPasswordOtpStringData = await redisClient.get(forgotPasswordOtpKey);
+  const resendOtpStringData = await redisClient.get(resendOtpKey);
+
+  if(forgotPasswordOtpStringData && resendOtpStringData){
+    return res.status(400).json({
+      success:false,
+      message:"Current Otp not expired till now !"
+    })
   }
+
+
 
   const otp = Math.floor(10000 + Math.random() * 9000).toString();
   const otpExpiry = new Date(Date.now() + 5 * 60 * 1000);
@@ -350,14 +362,13 @@ export const verifyForgotPasswordOtp = async (req, res, next) => {
 };
 
 export const changePassword = async (req, res, next) => {
-
   const errors = validationResult(req);
 
-  if(!errors.isEmpty()){
+  if (!errors.isEmpty()) {
     return res.status(400).json({
-      success:false,
-      message:errors.array()
-    })
+      success: false,
+      message: errors.array(),
+    });
   }
   const { newPassword, confirmPassword } = req.body;
   const { email } = req.params;
@@ -384,42 +395,115 @@ export const changePassword = async (req, res, next) => {
     });
   }
 
-  if(user.isLoggedIn == false){
+  if (user.isLoggedIn == false) {
     return res.status(401).json({
-      success:false,
-      message:"Unauthorized ,User  may login first to change password"
-    })
-  };
+      success: false,
+      message: "Unauthorized ,User  may login first to change password",
+    });
+  }
 
   const changePasswordRateLimit = `change-password-rate-limit-key:${req.ip}:${email}`;
 
-  if(await redisClient.get(changePasswordRateLimit)){
+  if (await redisClient.get(changePasswordRateLimit)) {
     return res.status(429).json({
-      success:false,
-      message:"Too many requests , Please try after some seconds !",
+      success: false,
+      message: "Too many requests , Please try after some seconds !",
     });
+  }
 
-  };
-
-
-  if(newPassword !== confirmPassword){
+  if (newPassword !== confirmPassword) {
     return res.status(403).json({
-      success:false,
-      message:"Both Password Not Matched !",
+      success: false,
+      message: "Both Password Not Matched !",
     });
-  };
-
+  }
 
   const newHashedPassword = await bcrypt.hash(newPassword, 10);
 
   user.password = newHashedPassword;
   await user.save();
 
-  await redisClient.set(changePasswordRateLimit,"true",{EX:30});
+  await redisClient.set(changePasswordRateLimit, "true", { EX: 30 });
 
-   return res.status(200).json({
+  return res.status(200).json({
+    success: true,
+    message: `password is changed for ${user.firstName} this user`,
+  });
+};
+
+export const resedOtp = async (req, res, next) => {
+  const { email } = req.params;
+
+  if (!email) {
+    return res.status(400).json({
+      success: false,
+      message: "Email must be required !",
+    });
+  }
+
+  const user = await User.findOne({ email });
+
+  if (!user) {
+    return res.status(400).json({
+      success: false,
+      message: "User Not Found !",
+    });
+  }
+
+  const forgotPasswordOtpKey = `forgot-password-otp-key:${email}`;
+  const resendOtpKey = `resed-otp-key:${email}`;
+
+
+  if (
+    user.otp &&
+    user.otpExpiry > new Date()
+  ) {
+    return res.status(403).json({
+      success: false,
+      message: "Current OTP not Expired till now ",
+    });
+  };
+
+
+  const forgotPasswordOtpStringData = await redisClient.get(forgotPasswordOtpKey);
+  const resendOtpStringData = await redisClient.get(resendOtpKey);
+
+  if(forgotPasswordOtpStringData && resendOtpStringData){
+    return res.status(400).json({
+      success:false,
+      message:"Current Otp not expired till now !"
+    })
+  }
+
+  const otp = Math.floor(10000 + Math.random() * 9000).toString();
+  const otpExpiry = new Date(Date.now() + 5 * 60 * 1000);
+
+  
+  const resendOtpRateLimitKey = `resed-otp-rate-limit:${req.ip}:${email}`;
+
+  if(await redisClient.get(resendOtpRateLimitKey)){
+    return res.status(429).json({
+      success:false,
+      message:"Too many requestes, Please try after some seconds !",
+    });
+  };
+
+
+
+  user.otp = otp;
+  user.otpExpiry = otpExpiry;
+  await user.save();
+
+  await redisClient.set(resendOtpKey,JSON.stringify(otp),{EX:300});
+  await redisClient.set(resendOtpRateLimitKey, "true",{EX:30});
+
+  sendOtp(email, otp);
+
+
+  return  res.status(200).json({
     success:true,
-    message:`password is changed for ${user.firstName} this user`,
-   });
+    message:`Successfully Send New OTP at ${user.email}`,
+    otp:otp
+  })
 
 };
