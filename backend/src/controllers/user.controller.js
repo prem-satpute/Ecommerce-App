@@ -105,7 +105,7 @@ export const verifyEmail = async (req, res, next) => {
   await user.save();
 
   return res.status(200).json({
-    success: false,
+    success: true,
     message: "User is register succesfully !",
     user: user,
   });
@@ -250,29 +250,24 @@ export const forgotPassord = async (req, res, next) => {
   const forgotPasswordOtpKey = `forgot-password-otp-key:${email}`;
   const resendOtpKey = `resed-otp-key:${email}`;
 
-  if (
-    user.otp &&
-    user.otpExpiry &&
-    user.otpExpiry > new Date()
-  ) {
+  if (user.otp && user.otpExpiry && user.otpExpiry > new Date()) {
     return res.status(400).json({
       success: false,
       message:
         "Can`t generate New OTP , beacuse current OTP not expired till !",
     });
-  };
-
-  const forgotPasswordOtpStringData = await redisClient.get(forgotPasswordOtpKey);
-  const resendOtpStringData = await redisClient.get(resendOtpKey);
-
-  if(forgotPasswordOtpStringData && resendOtpStringData){
-    return res.status(400).json({
-      success:false,
-      message:"Current Otp not expired till now !"
-    })
   }
 
+  const forgotPasswordOtpStringData =
+    await redisClient.get(forgotPasswordOtpKey);
+  const resendOtpStringData = await redisClient.get(resendOtpKey);
 
+  if (forgotPasswordOtpStringData && resendOtpStringData) {
+    return res.status(400).json({
+      success: false,
+      message: "Current Otp not expired till now !",
+    });
+  }
 
   const otp = Math.floor(10000 + Math.random() * 9000).toString();
   const otpExpiry = new Date(Date.now() + 5 * 60 * 1000);
@@ -453,57 +448,85 @@ export const resedOtp = async (req, res, next) => {
   const forgotPasswordOtpKey = `forgot-password-otp-key:${email}`;
   const resendOtpKey = `resed-otp-key:${email}`;
 
-
-  if (
-    user.otp &&
-    user.otpExpiry > new Date()
-  ) {
+  if (user.otp && user.otpExpiry > new Date()) {
     return res.status(403).json({
       success: false,
       message: "Current OTP not Expired till now ",
     });
-  };
+  }
 
-
-  const forgotPasswordOtpStringData = await redisClient.get(forgotPasswordOtpKey);
+  const forgotPasswordOtpStringData =
+    await redisClient.get(forgotPasswordOtpKey);
   const resendOtpStringData = await redisClient.get(resendOtpKey);
 
-  if(forgotPasswordOtpStringData && resendOtpStringData){
+  if (forgotPasswordOtpStringData && resendOtpStringData) {
     return res.status(400).json({
-      success:false,
-      message:"Current Otp not expired till now !"
-    })
+      success: false,
+      message: "Current Otp not expired till now !",
+    });
   }
 
   const otp = Math.floor(10000 + Math.random() * 9000).toString();
   const otpExpiry = new Date(Date.now() + 5 * 60 * 1000);
 
-  
   const resendOtpRateLimitKey = `resed-otp-rate-limit:${req.ip}:${email}`;
 
-  if(await redisClient.get(resendOtpRateLimitKey)){
+  if (await redisClient.get(resendOtpRateLimitKey)) {
     return res.status(429).json({
-      success:false,
-      message:"Too many requestes, Please try after some seconds !",
+      success: false,
+      message: "Too many requestes, Please try after some seconds !",
     });
-  };
-
-
+  }
 
   user.otp = otp;
   user.otpExpiry = otpExpiry;
   await user.save();
 
-  await redisClient.set(resendOtpKey,JSON.stringify(otp),{EX:300});
-  await redisClient.set(resendOtpRateLimitKey, "true",{EX:30});
+  await redisClient.set(resendOtpKey, JSON.stringify(otp), { EX: 300 });
+  await redisClient.set(resendOtpRateLimitKey, "true", { EX: 30 });
 
   sendOtp(email, otp);
 
+  return res.status(200).json({
+    success: true,
+    message: `Successfully Send New OTP at ${user.email}`,
+    otp: otp,
+  });
+};
 
-  return  res.status(200).json({
-    success:true,
-    message:`Successfully Send New OTP at ${user.email}`,
-    otp:otp
-  })
+export const getAllUser = async (req, res, next) => {
+  const users = await User.find();
 
+  return res.status(200).json({
+    success: true,
+    message: "Successfully fetch the all users !",
+  });
+};
+
+export const getUserById = async (req, res, next) => {
+  const { userId } = req.params;
+
+  if (!userId) {
+    return res.status(400).json({
+      success: false,
+      message: "User Id Not Found !",
+    });
+  }
+
+  const user = await User.findById(userId).select(
+    "-password -otp -otpExpiry -token",
+  );
+
+  if (!user) {
+    return res.status(404).json({
+      success: false,
+      message: "User not found !",
+    });
+  }
+
+  res.status(200).json({
+    success: true,
+    message: "User successfully Fetch by ID ",
+    user: user,
+  });
 };
