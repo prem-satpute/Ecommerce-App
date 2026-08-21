@@ -105,7 +105,7 @@ export const verifyEmail = async (req, res, next) => {
   await user.save();
 
   return res.status(200).json({
-    success: false,
+    success: true,
     message: "User is register succesfully !",
     user: user,
   });
@@ -507,3 +507,15 @@ export const resedOtp = async (req, res, next) => {
   })
 
 };
+
+
+
+
+
+
+
+
+
+
+  
+  
