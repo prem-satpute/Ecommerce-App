@@ -500,10 +500,12 @@ export const getAllUser = async (req, res, next) => {
   return res.status(200).json({
     success: true,
     message: "Successfully fetch the all users !",
+    users:users
   });
 };
 
 export const getUserById = async (req, res, next) => {
+  
   const { userId } = req.params;
 
   if (!userId) {
